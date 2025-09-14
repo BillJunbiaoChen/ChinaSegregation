@@ -11,7 +11,7 @@ local beta = 0.85 // discount factor
 local T = 8
 local J = 17 // using a remote county as an outside option
 local W = 2
-local out_opt_idx = 16 // Tongzhou
+local out_opt_idx = 5 // Miyun
 
 local wker_type = "lowedu"
 use "data/temp/probability_matrix_j_jp_w_`wker_type'.dta"
@@ -40,7 +40,7 @@ egen jprev = group(jprev_code)
 
 
 
-// Define Tongzhou (j = 16) as the outside option 
+// Select the outside option data
 preserve 
 	keep if j_code == `out_opt_idx'
 	rename log_phat log_phat_reference
@@ -125,6 +125,7 @@ count
 local total_obs = r(N)
 assert `total_obs' == (`T' - 1) * (`J') * (`J') * (`J' - 1) * (`W')
 
+label variable Y "relative likelihood: Y_{t, j, j_{t-1}, \tilde{j}, w}"
 save "ChinaSegregation/tasks/demand_estimation/output/relative_likelihood_renewal_path_`wker_type'.dta", replace
 
 	
