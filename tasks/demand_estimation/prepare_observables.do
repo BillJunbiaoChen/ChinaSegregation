@@ -5,28 +5,44 @@ set more off
 
 cd "/Users/junbiao/Dropbox/Segregation/Quantification/"
 
-local out_opt_idx = 5 // Miyun
+local wker_type = "`1'" // "lowedu" or "highedu"
+local out_opt_code = 18 // the reference location is always labeled by 18
+
+// migration distance 
+clear
+import delimited "data/temp/beijing_geodist.csv"
+rename county_code_i county_code 
+merge m:1 county_code using "data/geography_crosswalk_Beijing_final.dta", keepusing(jj) assert(match) nogen
+rename jj j_origin
+drop county_code
+rename county_code_j county_code 
+merge m:1 county_code using "data/geography_crosswalk_Beijing_final.dta", keepusing(jj) assert(match) nogen
+rename jj j_dest
+
+order j_origin j_dest distance_km 
+
+
+* adjust by distance w.r.t. the reference location 
+
+
+save "data/temp/beijing_geodist_clean.dta", replace
+
+
 
 
 // Housing price 
 use "data/Beijing_housing_18.dta" // (18 indicating there are 18 counties)
-replace price = price/1000
+replace price = price
 drop if year == 2006
 
 rename county j_name 
 keep j_name price year
-
+gen t = year - 2006
 replace j_name = "密云县" if j_name == "密云区" 
 replace j_name = "延庆县" if j_name == "延庆区" 
 
-merge m:1 j_name using "data/geography_crosswalk.dta", assert(match) nogen 
-
-sort j_code year 
-gen t = year - 2006
-
-drop if j_code == `out_opt_idx'
-egen j = group(j_code)
-
+merge m:1 j_name using "data/geography_crosswalk_Beijing_final.dta", keepusing(jj) assert(match) nogen 
+rename jj j 
 save "data/temp/Beijing_housing_price_clean.dta", replace
 
 
@@ -37,10 +53,8 @@ keep if inrange(year, 2007, 2014)
 
 rename county_200 j_name 
 gen t = year - 2006
-merge m:1 j_name using "data/geography_crosswalk.dta", assert(match) nogen 
-
-drop if j_code == `out_opt_idx'
-egen j = group(j_code)
+merge m:1 j_name using "data/geography_crosswalk_Beijing_final.dta",  keepusing(jj) assert(match) nogen 
+rename jj j 
 save "data/temp/Beijing_greenland_clean.dta", replace
 
 
@@ -53,22 +67,50 @@ save "data/temp/Beijing_greenland_clean.dta", replace
 
 // Main Demand Estimation 
 
-use "ChinaSegregation/tasks/demand_estimation/output/relative_likelihood_renewal_path_lowedu.dta", clear 
-merge m:1 j t using "data/temp/Beijing_housing_price_clean.dta", nogen 
-merge m:1 j t using "data/temp/Beijing_greenland_clean.dta", nogen 
+use "ChinaSegregation/tasks/demand_estimation/output/relative_likelihood_renewal_path_`wker_type'.dta", clear 
+merge m:1 j t using "data/temp/Beijing_housing_price_clean.dta", keep(match) nogen 
+merge m:1 j t using "data/temp/Beijing_greenland_clean.dta", keep(match) nogen 
+
+rename (jprev j) (j_origin j_dest)
+merge m:1 j_origin j_dest using "data/temp/beijing_geodist_clean.dta", keepusing(distance_km) keep(match) nogen 
+rename (j_dest distance_km) (j prev_migr_dist)
+
+gen j_dest = `out_opt_code'
+merge m:1 j_origin j_dest using "data/temp/beijing_geodist_clean.dta", keepusing(distance_km) keep(match) nogen 
+drop j_dest
+rename (j_origin distance_km) (jprev prev_migr_dist0)
+replace prev_migr_dist = prev_migr_dist - prev_migr_dist0
+
+
+
+rename (j j_tilde) (j_origin j_dest)
+merge m:1 j_origin j_dest using "data/temp/beijing_geodist_clean.dta", keepusing(distance_km) keep(match) nogen 
+rename (j_origin distance_km) (j renew_migr_dist)
+
+
+gen j_origin = `out_opt_code'
+merge m:1 j_origin j_dest using "data/temp/beijing_geodist_clean.dta", keepusing(distance_km) keep(match) nogen 
+drop j_origin
+rename (j_dest distance_km) (j_tilde renew_migr_dist0)
+replace renew_migr_dist = renew_migr_dist - renew_migr_dist0
 
 
 gen log_price = log(price)
+gen log_price_sqr = log_price*log_price
 gen log_forest = log(forest + 0.01)
 gen log_grassland = log(grassland + 0.01)
 
 
-reghdfe Y log_price, a(t)
+rename Y rela_likelihood
+
+gen log_prev_migr_dist = log(prev_migr_dist)
+// reghdfe rela_likelihood log_price  prev_migr_dist renew_migr_dist, a(w t)
+
+reghdfe rela_likelihood log_price, a(w#t)
 
 
 
-
-reghdfe Y log_price log_forest log_grassland, a(w t)
+// reghdfe Y log_price log_forest log_grassland, a(w#t)
 
 
 
