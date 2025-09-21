@@ -37,6 +37,7 @@ replace county_code = 110229 if j_name == "延庆县"
 
 
 replace county_code = 999999 if county_code == `out_opt_code'
+// replace county_code = 999999 if inlist(county_code, 110116, 110117, 110228, 110229)
 
 egen jj = group(county_code)
 sort jj // always put the outside option at last

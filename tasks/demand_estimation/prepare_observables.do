@@ -45,6 +45,35 @@ merge m:1 j_name using "data/geography_crosswalk_Beijing_final.dta", keepusing(j
 rename jj j 
 save "data/temp/Beijing_housing_price_clean.dta", replace
 
+// Instrumental variables 
+import delimited using "ChinaSegregation/tasks/initial_data/housing_vars_0515.csv", clear 
+rename county_2000 j_name 
+rename ydate year
+keep if inrange(year, 2007, 2014)
+gen t = year - 2006
+merge m:1 j_name using "data/geography_crosswalk_Beijing_final.dta", keepusing(jj) assert(match) nogen 
+rename jj j 
+keep t j_name j median_unitsize mean_unitsize n_obs
+fillin t j
+
+preserve
+    keep j t median_unitsize mean_unitsize n_obs
+    tempfile characteristics_tf
+    save `characteristics_tf', replace
+    clear
+restore
+
+keep j t 
+expand 18
+rename j j_own
+bysort j_own t: gen j = _n
+
+merge m:1 t j using `characteristics_tf'
+drop if j_own == j 
+collapse (sum)mean_unitsize median_unitsize [fweight=n_obs], by(t j_own)
+gen log_mean_unitsize = log(mean_unitsize)
+rename j_own j 
+save "data/temp/housing_characteristics_BLP.dta", replace
 
 
 // Greenland
@@ -70,6 +99,7 @@ save "data/temp/Beijing_greenland_clean.dta", replace
 use "ChinaSegregation/tasks/demand_estimation/output/relative_likelihood_renewal_path_`wker_type'.dta", clear 
 merge m:1 j t using "data/temp/Beijing_housing_price_clean.dta", keep(match) nogen 
 merge m:1 j t using "data/temp/Beijing_greenland_clean.dta", keep(match) nogen 
+merge m:1 j t using "data/temp/housing_characteristics_BLP.dta", keep(match) nogen 
 
 rename (jprev j) (j_origin j_dest)
 merge m:1 j_origin j_dest using "data/temp/beijing_geodist_clean.dta", keepusing(distance_km) keep(match) nogen 
@@ -104,13 +134,16 @@ gen log_grassland = log(grassland + 0.01)
 rename Y rela_likelihood
 
 gen log_prev_migr_dist = log(prev_migr_dist)
-// reghdfe rela_likelihood log_price  prev_migr_dist renew_migr_dist, a(w t)
-
-reghdfe rela_likelihood log_price, a(w#t)
+gen log_renew_migr_dist = log(renew_migr_dist)
 
 
+// ivreghdfe rela_likelihood log_prev_migr_dist (log_price=median_unitsize), absorb(j w t) tol(1e-6)
+// ivreghdfe rela_likelihood log_prev_migr_dist (log_price=mean_unitsize), absorb(j w t) tol(1e-6)
+ivreghdfe rela_likelihood log_prev_migr_dist log_grassland log_forest (log_price=mean_unitsize), absorb(j w t) tol(1e-6)
 
-// reghdfe Y log_price log_forest log_grassland, a(w#t)
+
+
+
 
 
 
