@@ -15,6 +15,7 @@ local W = 2
 
 local wker_type = "`1'" // "lowedu" or "highedu"
 
+local wker_type = "lowedu"
 
 // Import transition matrix
 use "data/temp/probability_matrix_j_jp_w_`wker_type'.dta"
@@ -69,12 +70,12 @@ count
 local total_obs = r(N)
 assert `total_obs' == (`T') * (`J') * (`J' - 1) * (`W') // we remove the outside opt so J -1
 
+gen intertemp_merger = t 
 save "transition_prob_main.dta", replace
 
 
 preserve 
-	drop if t == 1
-	gen intertemp_merger = t - 1
+	replace intertemp_merger = t - 1
 	label variable intertemp_merger "label for t+1, starting from 1"
 	keep jprev j w log_phat log_phat_reference intertemp_merger
 	label variable jprev "current loc"
@@ -100,16 +101,15 @@ order t w jprev j j_tilde
 sort t w jprev j j_tilde 
 
 * merge current file with "transition_prob_next.dta" 
-gen intertemp_merger = t 
 label variable intertemp_merger "label for t+1, starting from 1"
 
 rename (jprev j j_tilde log_phat log_phat_reference) (jprev_f j_f j_tilde_f log_phat_f log_phat_reference_f)
 gen jprev = j_f
 gen j = j_tilde_f
 
-drop if intertemp_merger == 8 
+// drop if intertemp_merger == 8 
 
-merge m:1 w intertemp_merger jprev j using "transition_prob_next.dta", keepusing(log_phat log_phat_reference) assert(match) nogen 
+merge m:1 w intertemp_merger jprev j using "transition_prob_next.dta", keepusing(log_phat log_phat_reference) keep(match) nogen 
 
 gen term2 = `beta' * (log_phat - log_phat_reference)
 
