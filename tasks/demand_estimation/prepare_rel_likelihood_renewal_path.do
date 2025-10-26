@@ -15,8 +15,6 @@ local W = 2
 
 local wker_type = "`1'" // "lowedu" or "highedu"
 
-local wker_type = "lowedu"
-
 // Import transition matrix
 use "data/temp/probability_matrix_j_jp_w_`wker_type'.dta"
 

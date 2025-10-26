@@ -1,0 +1,274 @@
+*******************************************************
+* Beijing Sorting Model — PPML Transition Matrices
+* Starts from: $temp/panel_final_town_updated.dta
+* Updated: 2025-09-05
+*******************************************************
+
+
+
+* Path
+// cd "/Users/fxr/Desktop/Draft_202409/sorting"  
+cd "/Users/junbiao/Dropbox/Segregation/Quantification/data"
+
+// global raw "raw"
+// global temp "temp"
+// global outp "outputs"
+
+clear
+set more off, permanently
+
+
+*** Data ***
+
+// use "$temp/panel_final.dta", clear
+use "temp/panel_final_town_updated.dta", clear
+
+keep if id_firms_worked == 1 // 把贷款发生当期的公司地址看作这个人不变的公司地址，只保留没有更改过workplace的样本
+
+
+* Simplify notations
+//gen byte  m = is_marriage
+//gen byte  k = income_2group
+gen byte  e = edu_2group
+gen int   t = year
+gen int   jprev = homeloc_num_lastyear
+gen int   w = firm_townname_num
+gen int   j = homeloc_num
+
+gen w_county_name = substr(firm_townname, 1, strpos(firm_townname, "_") - 1)
+
+
+// * aggregate workplace 
+
+* Downtown districts (index 1)
+replace w = 1 if w_county_name == "Dongcheng"
+replace w = 1 if w_county_name == "Xicheng"
+replace w = 1 if w_county_name == "Chaoyang"
+replace w = 1 if w_county_name == "Haidian"
+replace w = 1 if w_county_name == "Fengtai"
+replace w = 1 if w_county_name == "Shijingshan"
+replace w = 1 if w_county_name == "Chongwen"
+replace w = 1 if w_county_name == "Xuanwu"
+
+* Suburb districts/counties (index 2)
+replace w = 2 if w_county_name == "Changping"
+replace w = 2 if w_county_name == "Daxing"
+replace w = 2 if w_county_name == "Fangshan"
+replace w = 2 if w_county_name == "Huairou"
+replace w = 2 if w_county_name == "Mentougou"
+replace w = 2 if w_county_name == "Miyun"
+replace w = 2 if w_county_name == "Pinggu"
+replace w = 2 if w_county_name == "Shunyi"
+replace w = 2 if w_county_name == "Tongzhou"
+replace w = 2 if w_county_name == "Yanqing"
+
+
+label variable w "1 := urban, 2 := suburban"
+
+
+//label var m "marital group"
+//label var k "income group,3 groups"
+label var t "year"
+label var jprev "previous home (t-1)"
+label var w "workplace"
+label var j "destination town (t)"
+label var e "education group, 2groups"
+
+* missing
+drop if missing(e,t,jprev,w,j) // (189,119 observations deleted)
+
+* aggregate
+contract e t jprev w j, freq(nobs)
+count //47,028
+
+* 填充所有组合
+fillin e t jprev w j
+replace nobs = 0 if missing(nobs)
+count  // 3,569,792
+
+
+*** Version1: with workplace FE 
+
+preserve 
+
+// ppmlhdfe nobs, absorb(jm jk jt jjprev jw) vce(robust) d 
+ppmlhdfe nobs, absorb(e t jprev w) vce(robust) d
+
+capture noisily predict double mu, mu
+if _rc {
+    capture noisily predict double eta, eta
+    gen double mu = exp(eta) if missing(mu)
+}
+
+replace mu = 0 if missing(mu)
+
+*  P^{e_t(j | j', w)
+bysort e t jprev w: egen double denom = total(mu)
+gen double p_etjpw = mu/denom
+label var p_etjpw "P^{e}_t(j | j', w) from PPML"
+
+order t jprev j w e p_etjpw nobs 
+
+save "temp/probability_matrix_e_j_jp_w.dta",replace 
+
+
+
+
+
+*** Version2: without workplace FE 
+
+restore 
+
+ppmlhdfe nobs, absorb(e t jprev) vce(robust) d
+
+capture noisily predict double mu, mu
+if _rc {
+    capture noisily predict double eta, eta
+    gen double mu = exp(eta) if missing(mu)
+}
+
+replace mu = 0 if missing(mu)
+
+*  P^{e_t(j | j', w)
+bysort e t jprev w: egen double denom = total(mu)
+gen double p_etjpw_noworkFE = mu/denom
+label var p_etjpw_noworkFE "P^{e}_t(j | j', w) from PPML,without workplace FE"
+
+order t jprev j w e p_etjpw_noworkFE nobs 
+
+save "temp/probability_matrix_e_j_jp_w_noworkFE.dta",replace 
+
+
+
+
+
+
+*** Version3: Seperate for different education group
+
+
+** Low Education Level 
+
+use "temp/panel_final.dta", clear
+
+keep if id_firms_worked == 1 // 只保留没有更改过workplace的样本 (802,360 observations deleted)
+
+keep if edu_2group==1  //(582,676 observations deleted)
+
+* Simplify notations
+//gen byte  m = is_marriage
+//gen byte  k = income_3group
+//gen byte  e = edu_2group
+gen int   t = year
+gen int   jprev = homeloc_num_lastyear
+gen int   w = firm_townname_num
+gen int   j = homeloc_num
+
+// * aggregate workplace 
+replace w = 1 if inlist(w, 1, 2, 4, 6, 12, 13, 14, 15)
+replace w = 2 if inlist(w, 3, 5, 7, 8, 9, 10, 11, 16, 17, 18)
+label variable w "1 := urban, 2 := suburban"
+
+//label var m "marital group"
+//label var k "income group,3 groups"
+label var t "year"
+label var jprev "previous home (t-1)"
+label var j "destination town (t)"
+//label var e "education group, 2groups"
+
+* missing
+drop if missing(t,jprev,w,j) // (83,409 observations deleted)
+
+* aggregate
+contract t jprev w j, freq(nobs)
+count //7,440
+
+* 填充所有组合
+fillin t jprev w j
+replace nobs = 0 if missing(nobs)
+count  //46,656
+
+* PPML 
+ppmlhdfe nobs, absorb(t jprev w) vce(robust) d
+
+capture noisily predict double mu, mu
+if _rc {
+    capture noisily predict double eta, eta
+    gen double mu = exp(eta) if missing(mu)
+}
+
+replace mu = 0 if missing(mu)
+
+*  P^{t(j | j', w)
+bysort t jprev w: egen double denom = total(mu)
+gen double p_tjpw_lowedu = mu/denom
+label var p_tjpw_lowedu "P^t(j | j', w) from PPML: Low Education group"
+
+order t jprev j w p_tjpw_lowedu nobs 
+
+save "temp/probability_matrix_j_jp_w_lowedu.dta",replace 
+
+
+** High Education Level 
+
+use "temp/panel_final.dta", clear
+
+keep if id_firms_worked == 1 // 只保留没有更改过workplace的样本 (802,360 observations deleted)
+
+keep if edu_2group==2  //(501,581 observations deleted)
+
+* Simplify notations
+//gen byte  m = is_marriage
+//gen byte  k = income_3group
+//gen byte  e = edu_2group
+gen int   t = year
+gen int   jprev = homeloc_num_lastyear
+gen int   w = firm_townname_num
+gen int   j = homeloc_num
+
+// * aggregate workplace 
+replace w = 1 if inlist(w, 1, 2, 4, 6, 12, 13, 14, 15)
+replace w = 2 if inlist(w, 3, 5, 7, 8, 9, 10, 11, 16, 17, 18)
+label variable w "1 := urban, 2 := suburban"
+
+//label var m "marital group"
+//label var k "income group,3 groups"
+label var t "year"
+label var jprev "previous home (t-1)"
+label var w "workplace town"
+label var j "destination town (t)"
+//label var e "education group, 2groups"
+
+* missing
+drop if missing(t,jprev,w,j) // (88,313 observations deleted)
+
+* aggregate
+contract t jprev w j, freq(nobs)
+count //8,334
+
+* 填充所有组合
+fillin t jprev w j
+replace nobs = 0 if missing(nobs)
+count  //46,656
+
+* PPML 
+ppmlhdfe nobs, absorb(t jprev w) vce(robust) d
+
+capture noisily predict double mu, mu
+if _rc {
+    capture noisily predict double eta, eta
+    gen double mu = exp(eta) if missing(mu)
+}
+
+replace mu = 0 if missing(mu)
+
+*  P^{t(j | j', w)
+bysort t jprev w: egen double denom = total(mu)
+gen double p_tjpw_highedu = mu/denom
+label var p_tjpw_highedu "P^t(j | j', w) from PPML: High Education group"
+
+order t jprev j w p_tjpw_highedu nobs 
+
+save "temp/probability_matrix_j_jp_w_highedu.dta",replace 
+
+
+

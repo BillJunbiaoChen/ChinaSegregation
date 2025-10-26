@@ -6,6 +6,7 @@ set more off
 cd "/Users/junbiao/Dropbox/Segregation/Quantification/"
 
 local wker_type = "`1'" // "lowedu" or "highedu"
+
 local out_opt_code = 18 // the reference location is always labeled by 18
 
 local beta = 0.9
@@ -36,7 +37,7 @@ save "data/temp/beijing_geodist_clean.dta", replace
 // Housing price 
 use "data/Beijing_housing_18.dta" // (18 indicating there are 18 counties)
 replace price = price
-drop if year == 2006
+keep if inrange(year, 2007, 2014) // ECCP starts with the year 2007
 
 rename county j_name 
 keep j_name price year
@@ -47,6 +48,7 @@ replace j_name = "延庆县" if j_name == "延庆区"
 merge m:1 j_name using "data/geography_crosswalk_Beijing_final.dta", keepusing(jj) assert(match) nogen 
 rename jj j 
 save "data/temp/Beijing_housing_price_clean.dta", replace
+
 
 // Instrumental variables 
 import delimited using "ChinaSegregation/tasks/initial_data/housing_vars_0515.csv", clear 
@@ -59,9 +61,31 @@ rename jj j
 keep t j_name j median_unitsize mean_unitsize tenure n_obs
 fillin t j
 
+
+sort t j
+insobs 18 
+replace t = 5 if missing(t)
+replace j = _n - 108 if t == 5
+
+insobs 18 
+replace t = 6 if missing(t)
+replace j = _n - 126 if t == 6
+
+sort j t
+* Linear interpolation
+bysort j: ipolate mean_unitsize t, gen(mean_unitsize_itp)
+bysort j: ipolate median_unitsize t, gen(median_unitsize_itp)
+bysort j: ipolate tenure t, gen(tenure_itp)
+bysort j: ipolate n_obs t, gen(n_obs_itp)
+
+
+replace n_obs_itp = int(n_obs_itp)
+unique t 
+
 preserve
-    keep j t median_unitsize mean_unitsize tenure n_obs
+    keep j t median_unitsize_itp mean_unitsize_itp tenure_itp n_obs_itp
     tempfile characteristics_tf
+	unique t 
     save `characteristics_tf', replace
     clear
 restore
@@ -73,7 +97,8 @@ bysort j_own t: gen j = _n
 
 merge m:1 t j using `characteristics_tf'
 drop if j_own == j 
-collapse (sum)mean_unitsize median_unitsize tenure [fweight=n_obs], by(t j_own)
+
+collapse (sum)mean_unitsize_itp median_unitsize_itp tenure_itp [fweight=n_obs_itp], by(t j_own)
 gen log_mean_unitsize = log(mean_unitsize)
 gen log_tenure = log(tenure)
 rename j_own j 
