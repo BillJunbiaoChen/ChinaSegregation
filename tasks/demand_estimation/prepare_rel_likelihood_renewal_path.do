@@ -9,35 +9,20 @@ cap mkdir "ChinaSegregation/tasks/demand_estimation/output"
 
 local beta = 0.9 // discount factor
 local T = 8
-local J = 18 // N.B. This last county is always the outside option.
+local J = 332
+local outside_opt_idx = 110229203
 local W = 2
 
 
-local wker_type = "`1'" // "lowedu" or "highedu"
+local wker_type = "lowedu" // "lowedu" or "highedu"
 
 // Import transition matrix
 use "data/temp/probability_matrix_j_jp_w_`wker_type'.dta"
 
 
-// Update j and jprev 
-rename j j_temp 
-merge m:1 j_temp using "data/geography_crosswalk_Beijing_final.dta", keepusing(jj) assert(match) nogen 
-drop j_temp 
-rename jj j 
-
-rename jprev j_temp 
-merge m:1 j_temp using "data/geography_crosswalk_Beijing_final.dta", keepusing(jj) assert(match) nogen
-drop j_temp 
-rename jj jprev 
-
-order t w jprev j
-sort t w jprev j
-
-
-
 // Examine the input data (conditional prob)
 bysort t w jprev: egen pr_total = sum(p_tjpw_`wker_type')
-assert abs(pr_total - 1.0) < 1e-6
+assert abs(pr_total - 1.0) < 1e-8
 drop pr_total 
 summ p_tjpw_`wker_type'
 
@@ -50,7 +35,7 @@ replace t = t - 2006
 
 // Select the outside option data
 preserve 
-	keep if j == `J'
+	keep if j == `outside_opt_idx'
 	rename log_phat log_phat_reference
 	tempfile log_phat_reference_tf 
 	keep t jprev j w log_phat_reference 
@@ -59,7 +44,7 @@ preserve
 restore 
 
 
-drop if j == `J'
+drop if j == `outside_opt_idx'
 drop nobs _fillin _ppmlhdfe_d mu denom
 
 
@@ -82,7 +67,7 @@ preserve
 	label variable log_phat_reference "reference trans prob in the next period"
 	
 	drop if j == jprev // renewal loc != current loc
-	drop if jprev == 18 // because current loc excludes the outside opt
+	drop if jprev == `outside_opt_idx' // because current loc excludes the outside opt
 	save "transition_prob_next.dta", replace 
 	clear 
 restore 
@@ -127,7 +112,4 @@ assert `total_obs' == (`T' - 1) * (`J') * (`J' - 1) * (`J' - 2) * (`W')
 
 label variable Y "relative likelihood: Y_{t, j, j_{t-1}, \tilde{j}, w}"
 save "ChinaSegregation/tasks/demand_estimation/output/relative_likelihood_renewal_path_`wker_type'.dta", replace
-
-	
-	
 

@@ -26,18 +26,30 @@ forvalues edu_level = 1(1)2 {
 
 	keep if id_firms_worked == 1 // 把贷款发生当期的公司地址看作这个人不变的公司地址，只保留没有更改过workplace的样本
 
-    keep if edu_2group==`edu_level'
-    * Simplify notations
-    gen int   t = year
-    gen int   jprev = homeloc_num_lastyear
-    gen int   w = firm_townname_num
-    gen int   j = homeloc_num
+	
+	keep firm_townname homeloc_lastyear year homeloc edu_2group
+
+
+    keep if edu_2group == `edu_level'
+	
+	rename homeloc_lastyear townname 
+	merge m:1 townname using "../ChinaSegregation/tasks/initial_data/township_crosswalk_updated.dta", keep(master match) nogen
+	rename towncode jprev
+	drop townname 
+	
+	rename homeloc townname 
+	merge m:1 townname using "../ChinaSegregation/tasks/initial_data/township_crosswalk_updated.dta", keep(master match)  nogen
+	rename towncode j
+	drop townname 
+    
+    rename year t
+
 
     gen w_county_name = substr(firm_townname, 1, strpos(firm_townname, "_") - 1)
 
 
     // * aggregate workplace 
-
+	gen w = .
     * Downtown districts (index 1)
     replace w = 1 if w_county_name == "Dongcheng"
     replace w = 1 if w_county_name == "Xicheng"
