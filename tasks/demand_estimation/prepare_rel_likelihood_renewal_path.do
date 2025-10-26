@@ -10,7 +10,7 @@ cap mkdir "ChinaSegregation/tasks/demand_estimation/output"
 local beta = 0.9 // discount factor
 local T = 8
 local J = 332
-local outside_opt_idx = 110229203
+local outside_opt_idx = 332
 local W = 2
 
 
@@ -19,7 +19,16 @@ local wker_type = "lowedu" // "lowedu" or "highedu"
 // Import transition matrix
 use "data/temp/probability_matrix_j_jp_w_`wker_type'.dta"
 
+preserve 
+	keep j 
+	bysort j: drop if _n > 1
+	rename j towncode
+	egen j_idx = group(towncode)
+	save "data/temp/transit_matrix_crosswalk.dta", replace 
+	clear 
+restore
 
+	
 // Examine the input data (conditional prob)
 bysort t w jprev: egen pr_total = sum(p_tjpw_`wker_type')
 assert abs(pr_total - 1.0) < 1e-8
@@ -34,21 +43,30 @@ replace t = t - 2006
 
 
 // Select the outside option data
+rename j towncode 
+merge m:1 towncode using "data/temp/transit_matrix_crosswalk.dta", assert(match) nogen
+rename j_idx j 
+
+replace towncode = jprev
+merge m:1 towncode using "data/temp/transit_matrix_crosswalk.dta", assert(match) nogen
+replace jprev = j_idx
+drop towncode j_idx
+
 preserve 
 	keep if j == `outside_opt_idx'
 	rename log_phat log_phat_reference
 	tempfile log_phat_reference_tf 
 	keep t jprev j w log_phat_reference 
-	save `log_phat_reference_tf', replace 
+	save "data/temp/log_phat_reference_tf", replace 
 	clear 
 restore 
 
 
 drop if j == `outside_opt_idx'
 drop nobs _fillin _ppmlhdfe_d mu denom
+compress 
 
-
-merge m:1 t jprev w using `log_phat_reference_tf', keepusing(log_phat_reference) assert(match) nogen 
+merge m:1 t jprev w using "data/temp/log_phat_reference_tf", keepusing(log_phat_reference) assert(match) nogen 
 count 
 local total_obs = r(N)
 assert `total_obs' == (`T') * (`J') * (`J' - 1) * (`W') // we remove the outside opt so J -1
