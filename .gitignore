@@ -1,3 +1,4 @@
 tasks/*/output/*.dta
 .Rhistory
 tasks/.DS_Store
+tasks/*/code/*.stswp
