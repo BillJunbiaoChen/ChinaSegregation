@@ -86,6 +86,7 @@ preserve
 	
 	drop if j == jprev // renewal loc != current loc
 	drop if jprev == `outside_opt_idx' // because current loc excludes the outside opt
+	compress
 	save "transition_prob_next.dta", replace 
 	clear 
 restore 
@@ -96,7 +97,11 @@ gen term1 = log_phat - log_phat_reference
 	
 // Compute the renewal action component
 expand `J' - 1
-bysort t jprev w j: gen j_tilde = _n 
+gen group_id = group(t jprev w j)  // Create a unique identifier for (t, jprev, w, j)
+sort group_id
+
+gen j_tilde = 1
+replace j_tilde = j_tilde[_n-1] + 1 if group_id == group_id[_n-1]
 drop if j == j_tilde
 order t w jprev j j_tilde 
 sort t w jprev j j_tilde 
